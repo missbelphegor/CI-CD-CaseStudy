@@ -1,23 +1,18 @@
+
 pipeline {
     agent any
 
     stages {
         stage('Checkout') {
             steps {
-                echo 'Starting CI/CD Case Study'
                 checkout scm
+                echo 'Code downloaded from GitHub'
             }
         }
 
-        stage('Build') {
+        stage('Build and Test') {
             steps {
-                bat 'mvn clean package'
-            }
-        }
-
-        stage('Test') {
-            steps {
-                bat 'mvn test'
+                bat 'mvn -B clean verify'
             }
         }
 
@@ -27,19 +22,40 @@ pipeline {
             }
         }
 
-        stage('Verify Docker Image') {
+        stage('Deploy to Kubernetes') {
             steps {
-                bat 'docker images ci-cd-demo'
+                bat 'kubectl config current-context'
+                bat 'kubectl get nodes'
+
+                bat '''
+                    if exist "k8s\\deployment.yaml" (
+                        kubectl apply -f k8s
+                    ) else (
+                        kubectl apply -f deployment.yaml
+                        if errorlevel 1 exit /b 1
+                        kubectl apply -f service.yaml
+                        if errorlevel 1 exit /b 1
+                    )
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                bat 'kubectl rollout status deployment/ci-cd-demo --timeout=180s'
+                bat 'kubectl get pods'
+                bat 'kubectl get services'
             }
         }
     }
 
     post {
         success {
-            echo 'Build, tests, and Docker image creation completed successfully!'
+            echo 'CI/CD Pipeline completed successfully!'
         }
+
         failure {
-            echo 'Pipeline failed. Check the Console Output for the failing stage.'
+            echo 'Pipeline failed. Check the Console Output.'
         }
     }
 }
